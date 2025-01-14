@@ -1,8 +1,11 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -56,15 +59,20 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusBadRequest, "Couldn't find valid Content-Type header", nil)
 		return
 	}
-	parts := strings.Split(contentType, "/")
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't parse mime type", err)
+		return
+	}
+	parts := strings.Split(mediaType, "/")
 	if len(parts) != 2 {
 		respondWithError(w, http.StatusBadRequest, "malformed Content-Type header", nil)
 		return
 	}
 	mainType := parts[0]
 	subType := parts[1]
-	if mainType != "image" {
-		respondWithError(w, http.StatusBadRequest, "Content Type doesn't match image data type - thumbnail has to be an image", nil)
+	if mainType != "image" && (subType != "jpeg" || subType != "png") {
+		respondWithError(w, http.StatusBadRequest, "Content Type doesn't match image data type - thumbnail has to be an image/jpeg or image/png", nil)
 		return
 	}
 
@@ -104,7 +112,10 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	*/
 
 	// save thumbnail data to /assets
-	assetName := fmt.Sprintf("%s.%s", videoIDString, subType)
+	randomBytes := make([]byte, 32)
+	rand.Read(randomBytes)
+	encodedName := base64.RawURLEncoding.EncodeToString(randomBytes)
+	assetName := fmt.Sprintf("%s.%s", encodedName, subType)
 	assetLocalURL := filepath.Join(cfg.assetsRoot, assetName)
 	newAssetFile, err := os.Create(assetLocalURL)
 	if err != nil {
